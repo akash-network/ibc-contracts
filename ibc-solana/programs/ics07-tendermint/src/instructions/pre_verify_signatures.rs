@@ -94,7 +94,7 @@ const ED25519_MESSAGE_SIZE_OFFSET: usize = 12;
 const ED25519_MESSAGE_IX_INDEX_OFFSET: usize = 14;
 const ED25519_HEADER_SIZE: usize = 16;
 
-fn verify_ed25519_from_sysvar(
+pub(crate) fn verify_ed25519_from_sysvar(
     ix_sysvar: &AccountInfo,
     pubkey: &[u8; 32],
     msg: &[u8],

@@ -116,7 +116,8 @@ pub fn check_for_misbehaviour<'a>(
             tendermint_light_client_solana::SolanaSignatureVerifier::new(
                 verification_accounts,
                 program_id,
-            ),
+            )
+            .map_err(|_| MisbehaviourError::MisbehaviourVerificationFailed)?,
         ),
         tendermint_light_client_verifier::operations::commit_validator::ProdCommitValidator,
     );

@@ -184,7 +184,8 @@ fn update_client_impl<'a>(
             tendermint_light_client_solana::SolanaSignatureVerifier::new(
                 verification_accounts,
                 program_id,
-            ),
+            )
+            .map_err(|_| UpdateClientError::HeaderVerificationFailed)?,
         ),
         tendermint_light_client_verifier::operations::commit_validator::ProdCommitValidator,
     );

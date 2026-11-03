@@ -78,6 +78,8 @@ pub struct SolanaSignatureVerifier<'a> {
     verification_accounts: &'a [AccountInfo<'a>],
     /// Program ID for PDA derivation
     program_id: &'a Pubkey,
+    /// Authenticated once per verification, bounded across all supplied batches.
+    batch_hashes: Vec<[u8; 32]>,
 }
 
 // SAFETY: Solana programs are single-threaded; `AccountInfo` contains `Rc` which
@@ -86,12 +88,81 @@ unsafe impl Send for SolanaSignatureVerifier<'_> {}
 unsafe impl Sync for SolanaSignatureVerifier<'_> {}
 
 impl<'a> SolanaSignatureVerifier<'a> {
-    pub fn new(verification_accounts: &'a [AccountInfo<'a>], program_id: &'a Pubkey) -> Self {
-        Self {
+    pub fn new(
+        verification_accounts: &'a [AccountInfo<'a>],
+        program_id: &'a Pubkey,
+    ) -> Result<Self, Error> {
+        use solana_ibc_types::ics07::{MAX_VERIFIER_BATCH_HASHES, SIGNATURE_BATCH_DISCRIMINATOR};
+        let mut batch_hashes = Vec::new();
+        for account in verification_accounts {
+            let data = account
+                .try_borrow_data()
+                .map_err(|_| Error::VerificationFailed)?;
+            if data.get(..8) == Some(SIGNATURE_BATCH_DISCRIMINATOR.as_slice()) {
+                let hashes = parse_batch(account, &data, program_id)?;
+                if batch_hashes.len() + hashes.len() > MAX_VERIFIER_BATCH_HASHES {
+                    return Err(Error::VerificationFailed);
+                }
+                batch_hashes.extend(hashes);
+            }
+        }
+        batch_hashes.sort_unstable();
+        batch_hashes.dedup();
+        Ok(Self {
             verification_accounts,
             program_id,
-        }
+            batch_hashes,
+        })
     }
+}
+
+fn parse_batch(
+    account: &AccountInfo,
+    data: &[u8],
+    program_id: &Pubkey,
+) -> Result<Vec<[u8; 32]>, Error> {
+    use solana_ibc_types::ics07::*;
+    if account.owner != program_id
+        || account.executable
+        || account.lamports() == 0
+        || data.len() != SIGNATURE_BATCH_SIZE
+        || data[..8] != SIGNATURE_BATCH_DISCRIMINATOR
+        || data[8] != SIGNATURE_BATCH_VERSION
+    {
+        return Err(Error::VerificationFailed);
+    }
+    let count = u32::from_le_bytes(
+        data[74..78]
+            .try_into()
+            .map_err(|_| Error::VerificationFailed)?,
+    ) as usize;
+    if count > SIGNATURE_BATCH_CAPACITY {
+        return Err(Error::VerificationFailed);
+    }
+    let expected = Pubkey::create_program_address(
+        &[
+            SIGNATURE_BATCH_SEED,
+            &data[9..41],
+            &data[41..73],
+            &data[73..74],
+        ],
+        program_id,
+    )
+    .map_err(|_| Error::VerificationFailed)?;
+    if expected != *account.key {
+        return Err(Error::VerificationFailed);
+    }
+    let mut hashes = Vec::with_capacity(count);
+    for bytes in data[SIGNATURE_BATCH_HASHES_OFFSET..SIGNATURE_BATCH_HASHES_OFFSET + count * 32]
+        .chunks_exact(32)
+    {
+        let hash: [u8; 32] = bytes.try_into().map_err(|_| Error::VerificationFailed)?;
+        if hashes.last().is_some_and(|previous| previous >= &hash) {
+            return Err(Error::VerificationFailed);
+        }
+        hashes.push(hash);
+    }
+    Ok(hashes)
 }
 
 impl<'a> tendermint::crypto::signature::Verifier for SolanaSignatureVerifier<'a> {
@@ -103,6 +174,9 @@ impl<'a> tendermint::crypto::signature::Verifier for SolanaSignatureVerifier<'a>
         };
 
         let sig_hash = sha256v(&[pk.as_bytes(), msg, signature.as_bytes()]).to_bytes();
+        if self.batch_hashes.binary_search(&sig_hash).is_ok() {
+            return Ok(());
+        }
         let (expected_pda, _) =
             Pubkey::find_program_address(&[b"sig_verify", &sig_hash], self.program_id);
 
@@ -120,9 +194,18 @@ impl<'a> tendermint::crypto::signature::Verifier for SolanaSignatureVerifier<'a>
             return fallback();
         };
 
+        if account.owner != self.program_id || account.executable || account.lamports() == 0 {
+            return Err(Error::VerificationFailed);
+        }
+
         let Ok(data) = account.try_borrow_data() else {
             return fallback();
         };
+        if data.len() != 41
+            || data[..8] != solana_ibc_types::ics07::SIGNATURE_VERIFICATION_DISCRIMINATOR
+        {
+            return Err(Error::VerificationFailed);
+        }
 
         match data.get(SIGNATURE_VERIFICATION_IS_VALID_OFFSET) {
             Some(&1) => Ok(()),
@@ -220,7 +303,8 @@ mod tests {
     use tendermint::crypto::signature::Verifier;
 
     fn create_verification_account_data(is_valid: u8) -> Vec<u8> {
-        let mut data = vec![0u8; SIGNATURE_VERIFICATION_IS_VALID_OFFSET + 1];
+        let mut data = vec![0u8; 41];
+        data[..8].copy_from_slice(&solana_ibc_types::ics07::SIGNATURE_VERIFICATION_DISCRIMINATOR);
         data[SIGNATURE_VERIFICATION_IS_VALID_OFFSET] = is_valid;
         data
     }
@@ -260,7 +344,7 @@ mod tests {
     #[case::unexpected_value_falls_back(42, false)]
     fn test_preverify_with_account(#[case] is_valid: u8, #[case] expected_ok: bool) {
         let program_id = Pubkey::new_unique();
-        let owner = Pubkey::new_unique();
+        let owner = program_id;
         let pk_bytes = [1u8; 32];
         let msg = b"test message";
         let sig_bytes = [2u8; 64];
@@ -270,7 +354,7 @@ mod tests {
         let mut lamports = 1_000_000u64;
         let accounts = [create_account_info(&pda, &mut data, &mut lamports, &owner)];
 
-        let verifier = SolanaSignatureVerifier::new(&accounts, &program_id);
+        let verifier = SolanaSignatureVerifier::new(&accounts, &program_id).unwrap();
         let pk = tendermint::PublicKey::from_raw_ed25519(&pk_bytes).unwrap();
         let sig = Signature::try_from(sig_bytes.as_slice()).unwrap();
 
@@ -280,7 +364,7 @@ mod tests {
     #[test]
     fn test_preverify_data_too_short_falls_back() {
         let program_id = Pubkey::new_unique();
-        let owner = Pubkey::new_unique();
+        let owner = program_id;
         let pk_bytes = [1u8; 32];
         let msg = b"test message";
         let sig_bytes = [2u8; 64];
@@ -290,7 +374,7 @@ mod tests {
         let mut lamports = 1_000_000u64;
         let accounts = [create_account_info(&pda, &mut data, &mut lamports, &owner)];
 
-        let verifier = SolanaSignatureVerifier::new(&accounts, &program_id);
+        let verifier = SolanaSignatureVerifier::new(&accounts, &program_id).unwrap();
         let pk = tendermint::PublicKey::from_raw_ed25519(&pk_bytes).unwrap();
         let sig = Signature::try_from(sig_bytes.as_slice()).unwrap();
 
@@ -304,10 +388,110 @@ mod tests {
         let msg = b"test message";
         let sig_bytes = [2u8; 64];
 
-        let verifier = SolanaSignatureVerifier::new(&[], &program_id);
+        let verifier = SolanaSignatureVerifier::new(&[], &program_id).unwrap();
         let pk = tendermint::PublicKey::from_raw_ed25519(&pk_bytes).unwrap();
         let sig = Signature::try_from(sig_bytes.as_slice()).unwrap();
 
         assert!(verifier.verify(pk, msg, &sig).is_err());
+    }
+
+    #[test]
+    fn packed_receipts_authenticate_layout_identity_and_exact_digest() {
+        use solana_ibc_types::ics07::*;
+        let program = Pubkey::new_unique();
+        let submitter = Pubkey::new_unique();
+        let session = [7u8; 32];
+        let (address, bump) = Pubkey::find_program_address(
+            &[SIGNATURE_BATCH_SEED, submitter.as_ref(), &session],
+            &program,
+        );
+        let pk_bytes = [1u8; 32];
+        let msg = b"exact canonical vote";
+        let sig_bytes = [2u8; 64];
+        let hash = sha256v(&[&pk_bytes, msg, &sig_bytes]).to_bytes();
+        let mut valid = vec![0u8; SIGNATURE_BATCH_SIZE];
+        valid[..8].copy_from_slice(&SIGNATURE_BATCH_DISCRIMINATOR);
+        valid[8] = SIGNATURE_BATCH_VERSION;
+        valid[9..41].copy_from_slice(submitter.as_ref());
+        valid[41..73].copy_from_slice(&session);
+        valid[73] = bump;
+        valid[74..78].copy_from_slice(&1u32.to_le_bytes());
+        valid[78..110].copy_from_slice(&hash);
+        for mutation in [
+            "valid",
+            "owner",
+            "discriminator",
+            "version",
+            "address",
+            "bump",
+            "count",
+            "truncated",
+            "duplicate",
+            "tail",
+            "executable",
+            "closed",
+        ] {
+            let mut data = valid.clone();
+            let mut owner = program;
+            let mut key = address;
+            let mut lamports = 1_000_000;
+            match mutation {
+                "owner" => owner = Pubkey::new_unique(),
+                "discriminator" => data[0] ^= 1,
+                "version" => data[8] = 2,
+                "address" => key = Pubkey::new_unique(),
+                "bump" => data[73] ^= 1,
+                "count" => data[74..78].copy_from_slice(&u32::MAX.to_le_bytes()),
+                "truncated" => {
+                    data.pop();
+                }
+                "duplicate" => {
+                    data[74..78].copy_from_slice(&2u32.to_le_bytes());
+                    data[110..142].copy_from_slice(&hash);
+                }
+                "tail" => data[74..78].copy_from_slice(&0u32.to_le_bytes()),
+                "closed" => lamports = 0,
+                _ => (),
+            }
+            let mut account = create_account_info(&key, &mut data, &mut lamports, &owner);
+            account.executable = mutation == "executable";
+            let accounts = [account];
+            let verifier = SolanaSignatureVerifier::new(&accounts, &program);
+            let pk = tendermint::PublicKey::from_raw_ed25519(&pk_bytes).unwrap();
+            let sig = Signature::try_from(sig_bytes.as_slice()).unwrap();
+            let accepted = verifier
+                .as_ref()
+                .is_ok_and(|v| v.verify(pk, msg, &sig).is_ok());
+            assert_eq!(accepted, mutation == "valid", "{mutation}");
+            if let Ok(verifier) = verifier {
+                assert!(verifier.verify(pk, b"different vote", &sig).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn legacy_foreign_owner_or_discriminator_cannot_authorize_a_signature() {
+        let program = Pubkey::new_unique();
+        let pk_bytes = [1u8; 32];
+        let sig_bytes = [2u8; 64];
+        let msg = b"test";
+        let key = compute_sig_verify_pda(&pk_bytes, msg, &sig_bytes, &program);
+        for foreign in [true, false] {
+            let mut data = create_verification_account_data(1);
+            let owner = if foreign {
+                Pubkey::new_unique()
+            } else {
+                program
+            };
+            if !foreign {
+                data[0] ^= 1;
+            }
+            let mut lamports = 1_000_000;
+            let accounts = [create_account_info(&key, &mut data, &mut lamports, &owner)];
+            let verifier = SolanaSignatureVerifier::new(&accounts, &program).unwrap();
+            let pk = tendermint::PublicKey::from_raw_ed25519(&pk_bytes).unwrap();
+            let sig = Signature::try_from(sig_bytes.as_slice()).unwrap();
+            assert!(verifier.verify(pk, msg, &sig).is_err());
+        }
     }
 }

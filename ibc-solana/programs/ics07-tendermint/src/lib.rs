@@ -155,6 +155,20 @@ pub mod ics07_tendermint {
     pub fn client_status(ctx: Context<ClientStatus>) -> Result<()> {
         instructions::client_status::client_status(ctx)
     }
+
+    pub fn initialize_signature_batch(
+        ctx: Context<InitializeSignatureBatch>,
+        session: [u8; 32],
+    ) -> Result<()> {
+        instructions::signature_batch::initialize_signature_batch(ctx, session)
+    }
+
+    pub fn pre_verify_signature_batch(
+        ctx: Context<PreVerifySignatureBatch>,
+        signature: solana_ibc_types::ics07::SignatureData,
+    ) -> Result<()> {
+        instructions::signature_batch::pre_verify_signature_batch(ctx, signature)
+    }
 }
 
 #[cfg(test)]

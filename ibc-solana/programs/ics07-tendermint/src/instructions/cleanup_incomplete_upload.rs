@@ -44,6 +44,21 @@ pub(crate) fn is_owned_by_submitter(account: &AccountInfo, submitter: Pubkey) ->
 
     let disc = &data[..8];
 
+    if disc == crate::state::SignatureBatch::DISCRIMINATOR {
+        return Ok(data.len() == solana_ibc_types::ics07::SIGNATURE_BATCH_SIZE
+            && u32::from_le_bytes(
+                data[74..78]
+                    .try_into()
+                    .map_err(|_| crate::error::ErrorCode::InvalidAccountData)?,
+            ) as usize
+                <= solana_ibc_types::ics07::SIGNATURE_BATCH_CAPACITY
+            && anchor_lang::AccountDeserialize::try_deserialize(&mut &data[..]).is_ok_and(
+                |batch: crate::state::SignatureBatch| {
+                    batch.submitter == submitter && batch.valid_identity(account.key)
+                },
+            ));
+    }
+
     if disc == crate::state::HeaderChunk::DISCRIMINATOR {
         return Ok(
             anchor_lang::AccountDeserialize::try_deserialize(&mut &data[..])

@@ -87,6 +87,54 @@ impl SignatureVerification {
     pub const SEED: &'static [u8] = b"sig_verify";
 }
 
+/// Only this program's Ed25519-backed append instruction can add a digest.
+#[account]
+#[derive(InitSpace)]
+pub struct SignatureBatch {
+    pub version: u8,
+    pub submitter: Pubkey,
+    pub session: [u8; 32],
+    pub bump: u8,
+    #[max_len(128)]
+    pub hashes: Vec<[u8; 32]>,
+}
+
+impl SignatureBatch {
+    pub const SEED: &'static [u8] = solana_ibc_types::ics07::SIGNATURE_BATCH_SEED;
+
+    pub fn valid_identity(&self, address: &Pubkey) -> bool {
+        self.version == solana_ibc_types::ics07::SIGNATURE_BATCH_VERSION
+            && self.hashes.len() <= solana_ibc_types::ics07::SIGNATURE_BATCH_CAPACITY
+            && self.hashes.windows(2).all(|pair| pair[0] < pair[1])
+            && Pubkey::create_program_address(
+                &[
+                    Self::SEED,
+                    self.submitter.as_ref(),
+                    &self.session,
+                    &[self.bump],
+                ],
+                &crate::ID,
+            )
+            .is_ok_and(|key| key == *address)
+    }
+}
+
+const _: () = {
+    assert!(8 + SignatureBatch::INIT_SPACE == solana_ibc_types::ics07::SIGNATURE_BATCH_SIZE);
+    let mut i = 0;
+    while i < 8 {
+        assert!(
+            SignatureBatch::DISCRIMINATOR[i]
+                == solana_ibc_types::ics07::SIGNATURE_BATCH_DISCRIMINATOR[i]
+        );
+        assert!(
+            SignatureVerification::DISCRIMINATOR[i]
+                == solana_ibc_types::ics07::SIGNATURE_VERIFICATION_DISCRIMINATOR[i]
+        );
+        i += 1;
+    }
+};
+
 // Compile-time verification that discriminator length matches the shared constant
 const _: () = assert!(
     SignatureVerification::DISCRIMINATOR.len() == solana_ibc_constants::ANCHOR_DISCRIMINATOR_LEN
