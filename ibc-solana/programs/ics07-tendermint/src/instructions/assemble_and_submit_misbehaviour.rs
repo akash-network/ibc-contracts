@@ -71,12 +71,10 @@ pub fn assemble_and_submit_misbehaviour<'info>(
     _trusted_height_1: u64,
     _trusted_height_2: u64,
 ) -> Result<()> {
-    access_manager::require_role(
+    crate::helpers::require_relayer(
         &ctx.accounts.access_manager,
-        solana_ibc_types::roles::RELAYER_ROLE,
         &ctx.accounts.submitter,
         &ctx.accounts.instructions_sysvar,
-        &crate::ID,
     )?;
 
     require!(

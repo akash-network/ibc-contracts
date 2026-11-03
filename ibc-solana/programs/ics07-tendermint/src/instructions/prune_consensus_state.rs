@@ -52,6 +52,13 @@ pub fn prune_consensus_state(ctx: Context<PruneConsensusState>, height: u64) -> 
         &ctx.accounts.instructions_sysvar,
         &crate::ID,
     )?;
+    // Local AKT open relaying patch: the marker entry is not a member, even
+    // when signed with the program keypair.
+    require_keys_neq!(
+        ctx.accounts.submitter.key(),
+        crate::ID,
+        access_manager::AccessManagerError::Unauthorized
+    );
 
     let client_state = &ctx.accounts.client_state;
     require!(

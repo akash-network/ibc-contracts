@@ -51,3 +51,35 @@ pub fn close_account(account: &AccountInfo, recipient: &AccountInfo) -> Result<(
 
     Ok(())
 }
+
+/// Local AKT extension: the `RELAYER_ROLE` check for header and misbehaviour
+/// relaying. It makes the checks of `access_manager::require_role`: the
+/// submitter signs, the instruction is not invoked by CPI and the submitter
+/// holds `RELAYER_ROLE` in the access manager. The role check also passes for
+/// any submitter while the access manager lists this program's ID as a
+/// `RELAYER_ROLE` member, the open relaying marker. `prune_consensus_state`
+/// keeps the member-only check.
+pub fn require_relayer(
+    access_manager_account: &AccountInfo,
+    submitter: &AccountInfo,
+    instructions_sysvar: &AccountInfo,
+) -> Result<()> {
+    use access_manager::{state::AccessManager, AccessManagerError};
+    use solana_ibc_types::roles::RELAYER_ROLE;
+
+    require!(submitter.is_signer, AccessManagerError::SignerRequired);
+
+    solana_ibc_types::reject_cpi(instructions_sysvar, &crate::ID)
+        .map_err(|_| error!(AccessManagerError::CpiNotAllowed))?;
+
+    let data = access_manager_account.try_borrow_data()?;
+    let manager = AccessManager::try_deserialize(&mut &data[..])?;
+
+    require!(
+        manager.has_role(RELAYER_ROLE, submitter.key)
+            || manager.has_role(RELAYER_ROLE, &crate::ID),
+        AccessManagerError::Unauthorized
+    );
+
+    Ok(())
+}

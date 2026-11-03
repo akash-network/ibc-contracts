@@ -66,12 +66,10 @@ pub fn upload_misbehaviour_chunk(
     ctx: Context<UploadMisbehaviourChunk>,
     params: UploadMisbehaviourChunkParams,
 ) -> Result<()> {
-    access_manager::require_role(
+    crate::helpers::require_relayer(
         &ctx.accounts.access_manager,
-        solana_ibc_types::roles::RELAYER_ROLE,
         &ctx.accounts.submitter,
         &ctx.accounts.instructions_sysvar,
-        &crate::ID,
     )?;
 
     require!(

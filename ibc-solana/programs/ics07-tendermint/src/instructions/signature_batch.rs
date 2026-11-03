@@ -11,7 +11,7 @@ pub struct InitializeSignatureBatch<'info> {
     pub signature_batch: Account<'info, SignatureBatch>,
     #[account(seeds = [AppState::SEED], bump)]
     pub app_state: Account<'info, AppState>,
-    /// CHECK: program-owned access-manager PDA, checked by require_role.
+    /// CHECK: program-owned access-manager PDA, checked by require_relayer.
     #[account(seeds = [access_manager::state::AccessManager::SEED], bump,
         seeds::program = app_state.am_state.access_manager)]
     pub access_manager: AccountInfo<'info>,
@@ -27,12 +27,10 @@ pub fn initialize_signature_batch(
     ctx: Context<InitializeSignatureBatch>,
     session: [u8; 32],
 ) -> Result<()> {
-    access_manager::require_role(
+    crate::helpers::require_relayer(
         &ctx.accounts.access_manager,
-        solana_ibc_types::roles::RELAYER_ROLE,
         &ctx.accounts.submitter,
         &ctx.accounts.instructions_sysvar,
-        &crate::ID,
     )?;
     let batch = &mut ctx.accounts.signature_batch;
     batch.version = SIGNATURE_BATCH_VERSION;
@@ -64,12 +62,10 @@ pub fn pre_verify_signature_batch(
     ctx: Context<PreVerifySignatureBatch>,
     signature: SignatureData,
 ) -> Result<()> {
-    access_manager::require_role(
+    crate::helpers::require_relayer(
         &ctx.accounts.access_manager,
-        solana_ibc_types::roles::RELAYER_ROLE,
         &ctx.accounts.submitter,
         &ctx.accounts.instructions_sysvar,
-        &crate::ID,
     )?;
     require!(
         ctx.accounts.signature_batch.to_account_info().data_len()

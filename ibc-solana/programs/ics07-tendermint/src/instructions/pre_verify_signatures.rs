@@ -56,12 +56,10 @@ pub fn pre_verify_signature<'info>(
     ctx: Context<'_, '_, '_, 'info, PreVerifySignature<'info>>,
     signature: SignatureData,
 ) -> Result<()> {
-    access_manager::require_role(
+    crate::helpers::require_relayer(
         &ctx.accounts.access_manager,
-        solana_ibc_types::roles::RELAYER_ROLE,
         &ctx.accounts.submitter,
         &ctx.accounts.instructions_sysvar,
-        &crate::ID,
     )?;
 
     let expected_hash =
