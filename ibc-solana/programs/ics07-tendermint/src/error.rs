@@ -98,6 +98,12 @@ pub enum ErrorCode {
 
     #[msg("Only the program's upgrade authority can call initialize")]
     UnauthorizedDeployer,
+
+    // Local AKT extension: consensus-state pruning.
+    #[msg("Consensus state at the latest height cannot be pruned")]
+    CannotPruneLatestConsensusState,
+    #[msg("Consensus state is still within the trusting period")]
+    ConsensusStateNotExpired,
 }
 
 impl From<crate::conversions::ConversionError> for ErrorCode {

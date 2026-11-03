@@ -14,6 +14,9 @@ pub mod upload_misbehaviour_chunk;
 pub mod verify_membership;
 pub mod verify_non_membership;
 
+// Local AKT extension.
+pub mod prune_consensus_state;
+
 pub use access_manager_transfer::*;
 pub use assemble_and_submit_misbehaviour::*;
 pub use assemble_and_update_client::*;
@@ -27,3 +30,6 @@ pub use upload_header_chunk::*;
 pub use upload_misbehaviour_chunk::*;
 pub use verify_membership::*;
 pub use verify_non_membership::*;
+
+// Local AKT extension.
+pub use prune_consensus_state::*;

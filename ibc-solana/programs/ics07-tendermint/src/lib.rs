@@ -113,6 +113,12 @@ pub mod ics07_tendermint {
         instructions::cleanup_incomplete_upload::cleanup_incomplete_upload(ctx)
     }
 
+    /// Local AKT extension: close an expired consensus state other than the
+    /// latest and return its rent to the relayer.
+    pub fn prune_consensus_state(ctx: Context<PruneConsensusState>, height: u64) -> Result<()> {
+        instructions::prune_consensus_state::prune_consensus_state(ctx, height)
+    }
+
     /// Upload a chunk of misbehaviour data for multi-transaction submission
     pub fn upload_misbehaviour_chunk(
         ctx: Context<UploadMisbehaviourChunk>,
