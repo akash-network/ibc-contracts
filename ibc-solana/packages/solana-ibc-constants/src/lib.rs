@@ -19,7 +19,7 @@ pub const ANCHOR_DISCRIMINATOR_LEN: usize = 8;
 pub const ICS26_ROUTER_ID: &str = "FRGF7cthWUvDvAHMUARUHFycyUK2VDUtBchmkwrz7hgx";
 
 /// ICS07 Tendermint Light Client Program ID on Solana
-pub const ICS07_TENDERMINT_ID: &str = "HqPcGpVHxNNFfVatjhG78dFVMwjyZixoKPdZSt3d3TdD";
+pub const ICS07_TENDERMINT_ID: &str = "A3ShhF8HrTw4dmrXSFE2FsXkDdpo6j6v39b8ZQy895cQ";
 
 /// Client type prefix for ICS07 Tendermint light client
 pub const CLIENT_TYPE_TENDERMINT: &str = "07-tendermint";

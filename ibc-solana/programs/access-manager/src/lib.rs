@@ -19,7 +19,7 @@ use instructions::*;
 pub use state::AccessManagerState;
 pub use types::RoleData;
 
-declare_id!("4fMih2CidrXPeRx77kj3QcuBZwREYtxEbXjURUgadoe1");
+declare_id!("33F1ZLd43ptbNPTjXZBZkoNRfj6TFGfVv3uaLLFjGKEq");
 
 #[program]
 pub mod access_manager {
