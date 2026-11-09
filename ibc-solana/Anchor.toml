@@ -9,13 +9,15 @@ skip-lint = false
 localnet = "http://localhost:8899"
 # devnet = "https://api.devnet.solana.com"
 # testnet = "https://api.testnet.solana.com"
-# mainnet = "https://api.mainnet-beta.solana.com"
+mainnet = "https://api.mainnet-beta.solana.com"
+
+[programs.mainnet]
+access_manager = "HntLc7xrcRMRk9X38uMytCnweFJhVVCuzqhkVPe1RkCq"
+ics07_tendermint = "2dTK4NwEkv3gyY5dZnG4TuDYFMoNYQYrBqEGwTSmEmKr"
 
 [programs.localnet]
 test_attestation = "2kXQM1LsQeWLEB5GHBGDmUqNzNfejh3pVHaauiQv6FdV"
-access_manager = "HntLc7xrcRMRk9X38uMytCnweFJhVVCuzqhkVPe1RkCq"
 attestation = "F2G7Gtw2qVhG3uvvwr6w8h7n5ZzGy92cFQ3ZgkaX1AWe"
-ics07_tendermint = "2dTK4NwEkv3gyY5dZnG4TuDYFMoNYQYrBqEGwTSmEmKr"
 ics26_router = "FRGF7cthWUvDvAHMUARUHFycyUK2VDUtBchmkwrz7hgx"
 ics27_gmp = "3W3h4WSE8J9vFzVN8TGFGc9Uchbry3M4MBz4icdSWcFi"
 ift = "DQU7WYvJTdpbLSzpLjHtCRF7wiaWe7thXwboafEN4kcy"
