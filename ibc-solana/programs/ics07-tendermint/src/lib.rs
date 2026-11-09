@@ -14,7 +14,7 @@ pub mod types;
 
 use instructions::*;
 
-declare_id!("HqPcGpVHxNNFfVatjhG78dFVMwjyZixoKPdZSt3d3TdD");
+declare_id!("2dTK4NwEkv3gyY5dZnG4TuDYFMoNYQYrBqEGwTSmEmKr");
 solana_allocator::custom_heap!();
 
 pub use types::{
